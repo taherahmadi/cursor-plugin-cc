@@ -253,6 +253,9 @@ export function resolveWindowsInstall(root) {
  * @property {boolean=} cloud
  * @property {boolean=} force              Default: true.
  * @property {boolean=} approveMcps
+ * @property {string=} mode                Cursor `--mode` (`plan` | `ask`); omitted = agent mode.
+ * @property {string=} worktree            Name for cursor-agent's own `--worktree <name>` isolation.
+ * @property {string=} worktreeBase        Ref the worktree is based on (`--worktree-base`).
  */
 
 /**
@@ -267,6 +270,11 @@ export function buildArgs(opts) {
   const args = ['-p', '--output-format', 'stream-json', '--trust', '--model', opts.model];
   if (opts.force !== false) args.push('--force');
   if (opts.approveMcps) args.push('--approve-mcps');
+  if (opts.mode) args.push('--mode', opts.mode);
+  if (opts.worktree) {
+    args.push('--worktree', opts.worktree);
+    if (opts.worktreeBase) args.push('--worktree-base', opts.worktreeBase);
+  }
   if (opts.cloud) args.push('--cloud');
   if (opts.resumeChatId) args.push(`--resume=${opts.resumeChatId}`);
   else if (opts.resumeLatest) args.push('--resume');
@@ -282,11 +290,15 @@ export function buildArgs(opts) {
  * @property {boolean=} cloud
  * @property {boolean=} force
  * @property {boolean=} approveMcps
+ * @property {string=} mode
+ * @property {string=} worktree
+ * @property {string=} worktreeBase
  * @property {string=} cwd
  * @property {number=} timeoutSec
  * @property {string} logPath
  * @property {(ev: Record<string, unknown>) => void=} onEvent
  * @property {(line: string) => void=} onRaw
+ * @property {(pid: number) => void=} onSpawn   Called with the cursor-agent pid once it is running.
  */
 
 /**
@@ -310,6 +322,7 @@ export async function runHeadless(opts) {
   if (!child.stdin || !child.stdout || !child.stderr) {
     throw new Error('cursor-agent spawn failed: stdio not attached');
   }
+  if (opts.onSpawn && typeof child.pid === 'number') opts.onSpawn(child.pid);
   // EPIPE fires when the child dies before draining stdin (bad model id,
   // auth failure) — the close handler already reports that exit.
   child.stdin.on('error', () => {});

@@ -3,7 +3,9 @@ import { spawn } from 'node:child_process';
 import { openSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { collapsePromptArgv, parseArgv, parseTimeout } from './lib/args.mjs';
-import { resolveModel, runHeadless } from './lib/cursor.mjs';
+import { runHeadless } from './lib/cursor.mjs';
+import { headCommit } from './lib/git.mjs';
+import { normaliseTaskType, resolveRoute } from './lib/routing.mjs';
 import { collectReviewContext, isGitRepo, repoRoot } from './lib/git.mjs';
 import { id as newId } from './lib/id.mjs';
 import {
@@ -37,8 +39,32 @@ function parseFlags(argv) {
   const model = typeof flags['model'] === 'string' ? flags['model'] : undefined;
   const timeout = parseTimeout(flags['timeout']);
   const worker = typeof flags['worker'] === 'string' ? flags['worker'] : undefined;
+  // Reviews route as `review` unless the caller picks another read-only type
+  // (`--type security` is the common one).
+  const type = normaliseTaskType(flags['type']) ?? 'review';
   const focus = positional.join(' ').trim();
-  return { focus, model, background, wait, adversarial, base, scope, timeout, noGitCheck, worker };
+  return {
+    focus,
+    model,
+    background,
+    wait,
+    adversarial,
+    base,
+    scope,
+    timeout,
+    noGitCheck,
+    worker,
+    type,
+  };
+}
+
+/**
+ * @param {{model?: string, type: string}} flags
+ * @param {string} root
+ * @returns {string}
+ */
+function reviewModel(flags, root) {
+  return resolveRoute({ explicitModel: flags.model, type: flags.type, repoRoot: root }).model;
 }
 
 export function buildReviewPrompt({ label, body, focus, adversarial }) {
@@ -75,6 +101,15 @@ function renderResult(out, { jobId, status, summary, chatId, warnings }) {
   out(`\nRun \`/cursor:status ${jobId}\` for the full record.\n`);
 }
 
+/**
+ * @param {string} root
+ * @returns {Promise<{baseCommit?: string}>}
+ */
+async function baseCommitPatch(root) {
+  const sha = await headCommit(root);
+  return sha ? { baseCommit: sha } : {};
+}
+
 function postFlightWarnings(summary) {
   const warnings = [];
   if (summary.filesTouched.length > 0) {
@@ -88,7 +123,7 @@ function postFlightWarnings(summary) {
 }
 
 async function runReview({ flags, context, jobId, root, onEvent }) {
-  const model = resolveModel(flags.model);
+  const model = reviewModel(flags, root);
   const logPath = rawLogPathFor(root, jobId);
   const prompt = buildReviewPrompt({
     label: context.label,
@@ -131,11 +166,16 @@ async function runReview({ flags, context, jobId, root, onEvent }) {
 }
 
 async function foreground(flags, context, jobId, root) {
-  const model = resolveModel(flags.model);
+  const model = reviewModel(flags, root);
   ensureDir(jobsDir(root));
   ensureDir(logsDir(root));
   createJob({ id: jobId, repoPath: root, prompt: `REVIEW: ${context.label}`, model });
-  updateJob(root, jobId, { pid: process.pid });
+  updateJob(root, jobId, {
+    pid: process.pid,
+    taskType: flags.type,
+    workspacePath: root,
+    ...(await baseCommitPatch(root)),
+  });
 
   process.stdout.write(
     `Review job \`${jobId}\` started — ${context.label} (model \`${model}\`${
@@ -266,7 +306,7 @@ export async function main(rawArgv) {
   const jobId = newId(10);
 
   if (flags.background) {
-    const model = resolveModel(flags.model);
+    const model = reviewModel(flags, root);
     createJob({
       id: jobId,
       repoPath: root,
@@ -274,8 +314,14 @@ export async function main(rawArgv) {
       model,
       background: true,
     });
+    updateJob(root, jobId, {
+      taskType: flags.type,
+      workspacePath: root,
+      ...(await baseCommitPatch(root)),
+    });
     const forwarded = [];
     if (flags.model) forwarded.push('--model', flags.model);
+    if (flags.type !== 'review') forwarded.push('--type', flags.type);
     if (flags.adversarial) forwarded.push('--adversarial');
     if (flags.base) forwarded.push('--base', flags.base);
     forwarded.push('--scope', flags.scope);

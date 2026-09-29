@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { collapsePromptArgv, parseArgv, parseTimeout } from './lib/args.mjs';
-import { listConfiguredMcps, resolveModel, runHeadless } from './lib/cursor.mjs';
+import { listConfiguredMcps, runHeadless } from './lib/cursor.mjs';
+import { resolveRoute } from './lib/routing.mjs';
 import { isGitRepo, repoRoot } from './lib/git.mjs';
 import { id as newId } from './lib/id.mjs';
 import { createJob, rawLogPath as rawLogPathFor, updateJob } from './lib/jobs.mjs';
@@ -201,7 +202,7 @@ export async function main(rawArgv) {
     }
   }
 
-  const model = resolveModel(flags.model);
+  const model = resolveRoute({ explicitModel: flags.model, type: 'browser', repoRoot: root }).model;
   const prompt = buildBrowserPrompt(flags.url, flags.description);
   const jobId = newId(10);
   const logPath = rawLogPathFor(root, jobId);

@@ -40,6 +40,17 @@ export const SESSION_ID_ENV = 'CURSOR_PLUGIN_CC_SESSION_ID';
  * @property {boolean=} cloud
  * @property {string=} sessionId
  * @property {import('./review-output.mjs').ReviewOutput=} review
+ * @property {string=} taskType        implement | review | plan | investigate | security | browser
+ * @property {string=} routeSource     Where the model came from (explicit, type, repo-default, …).
+ * @property {string=} mode            Cursor `--mode` the run used, if any.
+ * @property {number=} retryMax        Extra attempts allowed by `--retry`.
+ * @property {number=} attempts        Attempts actually made.
+ * @property {number=} childPid        The live cursor-agent pid while running.
+ * @property {string=} baseCommit      HEAD when the job started (what `/cursor:diff` diffs against).
+ * @property {string=} workspacePath   Where the agent worked: the repo root, or the worktree.
+ * @property {string=} worktreeName    cursor-agent `--worktree` name, when isolated.
+ * @property {string=} worktreePath    Resolved worktree path, when isolated.
+ * @property {string=} groupId         `/cursor:fanout` group this job belongs to.
  */
 
 /**
@@ -243,16 +254,25 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
   // (or, for a reused group-leader pid, its process group). The job dir is
   // short-lived and pruned after 30 days, so we accept this rather than track
   // a start-time identity cross-platform.
-  if (typeof job.pid === 'number' && isProcessAlive(job.pid)) {
+  // Prefer the recorded cursor-agent child: a fanout worker hosts several
+  // jobs in one process, so signalling the worker's group would take every
+  // sibling down with it. Fall back to the worker/group when no child pid is
+  // known (older records, or the agent has not been spawned yet).
+  const targets = [];
+  if (typeof job.childPid === 'number' && isProcessAlive(job.childPid)) targets.push(job.childPid);
+  if (targets.length === 0 && typeof job.pid === 'number' && isProcessAlive(job.pid)) {
+    targets.push(job.pid);
+  }
+  for (const pid of targets) {
     // killTree signals the worker's whole process group so the cursor-agent
     // child dies too — see lib/kill.mjs for why plain kill(pid) is not enough.
-    killTree(job.pid, 'SIGTERM');
+    killTree(pid, 'SIGTERM');
     const deadline = Date.now() + graceMs;
-    while (Date.now() < deadline && isProcessAlive(job.pid)) {
+    while (Date.now() < deadline && isProcessAlive(pid)) {
       await new Promise((r) => setTimeout(r, 200));
     }
-    if (isProcessAlive(job.pid)) {
-      killTree(job.pid, 'SIGKILL');
+    if (isProcessAlive(pid)) {
+      killTree(pid, 'SIGKILL');
     }
   }
   return updateJob(repoPath, id, {
@@ -274,6 +294,44 @@ export async function cancelJob(repoPath, id, graceMs = 5_000) {
 export function filterJobsForSession(jobs, sessionId) {
   if (!sessionId) return jobs;
   return jobs.filter((j) => !j.sessionId || j.sessionId === sessionId);
+}
+
+/**
+ * Resolve a user-supplied id: an exact match wins, otherwise a UNIQUE prefix.
+ *
+ * @param {string} repoPath
+ * @param {string} ref
+ * @returns {{job: JobRecord|null, ambiguous?: JobRecord[]}}
+ */
+export function resolveJobRef(repoPath, ref) {
+  const exact = readJob(repoPath, ref);
+  if (exact) return { job: exact };
+  const matches = listJobs(repoPath).filter((j) => j.id.startsWith(ref));
+  if (matches.length === 1) return { job: matches[0] };
+  if (matches.length > 1) return { job: null, ambiguous: matches };
+  return { job: null };
+}
+
+/**
+ * @param {string} repoPath
+ * @param {string} groupId
+ * @returns {JobRecord[]}
+ */
+export function listGroupJobs(repoPath, groupId) {
+  return listJobs(repoPath).filter((j) => j.groupId === groupId);
+}
+
+/**
+ * A job whose record says `running` but whose process is gone: the worker
+ * died (or the machine rebooted) before it could finalise the record.
+ *
+ * @param {JobRecord} job
+ * @returns {boolean}
+ */
+export function isCrashed(job) {
+  if (job.status !== 'running') return false;
+  if (typeof job.pid !== 'number') return false;
+  return !isProcessAlive(job.pid);
 }
 
 /**

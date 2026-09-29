@@ -27,6 +27,80 @@ export async function repoRoot(cwd = process.cwd()) {
   return cwd;
 }
 
+/**
+ * SHA of HEAD, or null when the repo has no commits yet (or is not a repo).
+ *
+ * @param {string} [cwd]
+ * @returns {Promise<string|null>}
+ */
+export async function headCommit(cwd = process.cwd()) {
+  const res = await run('git', ['rev-parse', '--verify', '--quiet', 'HEAD'], {
+    cwd,
+    timeoutMs: 3_000,
+  });
+  const sha = res.stdout.trim();
+  return res.exitCode === 0 && sha ? sha : null;
+}
+
+/**
+ * @typedef {Object} JobDiff
+ * @property {string} text          Unified diff (or stat / name list per `format`).
+ * @property {string[]} files       Changed paths, untracked included.
+ * @property {boolean} isEmpty
+ * @property {string=} error
+ */
+
+/**
+ * Diff a workspace against the commit a job started from: tracked changes via
+ * `git diff <base>` (staged + unstaged in one go) and untracked files rendered
+ * as additions, so a file the agent created shows up like any other change.
+ *
+ * @param {string} cwd
+ * @param {{base?: string|null, format?: 'patch'|'stat'|'name-only'}} [opts]
+ * @returns {Promise<JobDiff>}
+ */
+export async function diffSince(cwd, opts = {}) {
+  const format = opts.format ?? 'patch';
+  const base = opts.base ?? (await diffBase(cwd));
+  const verify = await git(cwd, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);
+  if (verify.exitCode !== 0) {
+    return {
+      text: '',
+      files: [],
+      isEmpty: true,
+      error: `Base commit ${base} is not in this repository.`,
+    };
+  }
+  const tracked = (await git(cwd, ['diff', '--name-only', base])).stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean);
+  const untracked = (await git(cwd, ['ls-files', '--others', '--exclude-standard'])).stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean);
+  const files = [...new Set([...tracked, ...untracked])].sort();
+  if (files.length === 0) return { text: '', files, isEmpty: true };
+
+  if (format === 'name-only') {
+    return { text: files.join('\n') + '\n', files, isEmpty: false };
+  }
+  if (format === 'stat') {
+    const stat = (await git(cwd, ['diff', '--stat', base])).stdout.trimEnd();
+    const extra = untracked.map((f) => `  + ${f} (new file)`).join('\n');
+    return { text: [stat, extra].filter(Boolean).join('\n') + '\n', files, isEmpty: false };
+  }
+  const parts = [];
+  const patch = (await git(cwd, ['diff', '--no-ext-diff', base])).stdout;
+  if (patch.trim()) parts.push(patch.trimEnd());
+  for (const f of untracked) {
+    // `--no-index` exits 1 whenever there IS a diff, so ignore the exit code.
+    const res = await git(cwd, ['diff', '--no-ext-diff', '--no-index', '--', '/dev/null', f]);
+    if (res.stdout.trim()) parts.push(res.stdout.trimEnd());
+  }
+  return { text: parts.join('\n') + '\n', files, isEmpty: parts.length === 0 };
+}
+
 // --- review-context collection ---------------------------------------------
 // Helpers below gather the git state a code review needs (status, diff stat,
 // diff body, untracked file contents) so the review prompt is self-contained

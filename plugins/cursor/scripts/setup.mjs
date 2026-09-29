@@ -14,6 +14,7 @@ import {
 } from './lib/cursor.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { ensureDir, jobsDir, pluginHome } from './lib/paths.mjs';
+import { installStatusline, readSettings, statuslineCommand } from './lib/statusline-install.mjs';
 
 function pluginRoot() {
   const envRoot = process.env.CLAUDE_PLUGIN_ROOT;
@@ -170,6 +171,74 @@ async function setTasksDir(raw) {
   return 0;
 }
 
+function statuslineSnippet(command) {
+  return [
+    '```json',
+    JSON.stringify({ statusLine: { type: 'command', command } }, null, 2),
+    '```',
+  ].join('\n');
+}
+
+/**
+ * `--statusline` prints the snippet; `--install-statusline` writes it when no
+ * status line is configured yet and otherwise explains how to chain it.
+ *
+ * @param {boolean} install
+ * @returns {number}
+ */
+function statusline(install) {
+  const command = statuslineCommand();
+  if (!install) {
+    const { settings } = readSettings();
+    const lines = ['### Cursor statusline widget', ''];
+    lines.push(
+      'Shows `◐ 2 cursor · 3m 12s` while jobs run for the current repo, nothing when idle.',
+    );
+    lines.push('');
+    lines.push('Add this to your Claude Code `settings.json`:');
+    lines.push('');
+    lines.push(statuslineSnippet(command));
+    if (settings.statusLine) {
+      lines.push('');
+      lines.push(
+        'You already have a status line. Keep it and append ours by ending its command with:',
+      );
+      lines.push('');
+      lines.push('```sh');
+      lines.push(`… ; ${command} </dev/null`);
+      lines.push('```');
+      lines.push(
+        'With empty stdin the widget scopes to its working directory (Claude Code runs the status line in the project dir); set `CURSOR_PLUGIN_CC_STATUSLINE_CWD` to override, or `tee` the stdin JSON to both commands.',
+      );
+    } else {
+      lines.push('');
+      lines.push('Or let the plugin write it for you: `/cursor:setup --install-statusline`.');
+    }
+    process.stdout.write(lines.join('\n') + '\n');
+    return 0;
+  }
+  const res = installStatusline();
+  switch (res.outcome) {
+    case 'installed':
+      process.stdout.write(
+        `Statusline widget **installed** in \`${res.file}\`. Restart Claude Code (or \`/reload-plugins\`) to see it.\n`,
+      );
+      return 0;
+    case 'already-ours':
+      process.stdout.write(`Statusline widget is already configured in \`${res.file}\`.\n`);
+      return 0;
+    case 'conflict':
+      process.stdout.write(
+        `\`${res.file}\` already has a statusLine command:\n\n\`\`\`\n${res.existing}\n\`\`\`\n\n` +
+          'Not overwriting it. Chain the widget into your command instead — `/cursor:setup --statusline` prints the snippet.\n',
+      );
+      return 1;
+    default:
+      process.stderr.write(`Could not install the statusline widget: ${res.error}\n`);
+      return 1;
+  }
+}
+
 async function doctor(asJson = false) {
   const { bin, checks, mcps, allOk } = await gatherDoctor();
 
@@ -281,9 +350,13 @@ export async function main(rawArgv) {
     'json',
     'enable-review-gate',
     'disable-review-gate',
+    'statusline',
+    'install-statusline',
   ]);
   const tasksDirFlag = flags['tasks-dir'] ?? flags['tasksDir'];
   if (tasksDirFlag !== undefined) return setTasksDir(tasksDirFlag);
+  if (flags['install-statusline'] || flags['installStatusline']) return statusline(true);
+  if (flags['statusline']) return statusline(false);
   if (flags['enable-review-gate'] || flags['enableReviewGate']) return toggleReviewGate(true);
   if (flags['disable-review-gate'] || flags['disableReviewGate']) return toggleReviewGate(false);
   // --json always emits the full structured doctor report — hooks and scripts
