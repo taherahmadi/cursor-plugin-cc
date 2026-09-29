@@ -8,7 +8,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
-- **Marketplace renamed to `taher`** (was `tomas-cursor`) now that this is a maintained fork. Install with `/plugin marketplace add taherahmadi/cursor-plugin-cc` then `/plugin install cursor@taher`. The plugin name and the `cursor:` command namespace are unchanged. If you added the old marketplace name, `/plugin marketplace remove tomas-cursor` first.
+- **Marketplace renamed to `cursor-plugin-cc`** (was `tomas-cursor`), matching the repo name now that this is a maintained fork. Install with `/plugin marketplace add taherahmadi/cursor-plugin-cc` then `/plugin install cursor@cursor-plugin-cc`. The plugin name and the `cursor:` command namespace are unchanged. If you added the old marketplace name, `/plugin marketplace remove tomas-cursor` first.
 
 ### Added
 

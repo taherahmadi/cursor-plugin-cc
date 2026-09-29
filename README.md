@@ -1,7 +1,7 @@
 # cursor-plugin-cc
 
-> **Claude plans. Cursor writes. Claude reviews.**
-> A Claude Code plugin that delegates coding _execution_ to Cursor's Composer — without ever leaving the Claude Code TUI.
+> **The most capable Cursor plugin for Claude Code.**
+> Delegate implementation, reviews, design discussions and parallel task batches from Claude Code to the Cursor CLI (`cursor-agent`) — with per-task model routing, worktree isolation, auto-retry, job tracking and a status-bar widget. Never leave the Claude Code TUI.
 
 [![CI](https://github.com/taherahmadi/cursor-plugin-cc/actions/workflows/ci.yml/badge.svg)](https://github.com/taherahmadi/cursor-plugin-cc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
@@ -9,7 +9,77 @@
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-7c3aed.svg)](https://claude.com/claude-code)
 [![Cursor CLI](https://img.shields.io/badge/Cursor-cursor--agent-000000.svg)](https://cursor.com)
 
+**Claude plans. Cursor writes. Claude reviews.** Claude Code is the orchestrator with the long context and the planning judgment; Cursor's Composer is the fast executor. This plugin is the glue, and it is the one Cursor plugin that covers the whole loop:
+
+- **Delegate** a task (`/cursor:delegate`), a whole batch in parallel (`/cursor:fanout`), or a plan you already wrote in plan mode (`/cursor:from-plan`).
+- **Route by task type.** A repo-root `.cursor-plugin-cc.json` decides which model implements, reviews, plans, investigates or audits security. `plan` and `investigate` run **read-only**, so a design discussion can never touch your tree.
+- **Isolate and inspect.** `--worktree` runs a job in its own git worktree; `/cursor:diff` shows exactly what any job changed, from the commit it started at.
+- **Self-heal.** `--retry N` resumes the same Cursor chat after a failure instead of starting over.
+- **Review with a second model.** `/cursor:review` and `/cursor:adversarial-review` hand your diff to a different model, read-only, with structured findings, and an optional **stop-time review gate** that blocks Claude from ending a turn until the reviewer is satisfied.
+- **Verify in a real browser** with `/cursor:browser` via Cursor's `chrome-devtools` MCP.
+- **Track everything.** Every run is a job: `/cursor:status`, `/cursor:result`, `/cursor:cancel`, `/cursor:resume`, plus a `◐ 2 cursor · 3m 12s` status-bar widget.
+
+Zero runtime dependencies, no build step, plain ESM. Forked from [freema/cursor-plugin-cc](https://github.com/freema/cursor-plugin-cc), which itself borrowed from [openai/codex-plugin-cc](https://github.com/openai/codex-plugin-cc); this fork adds the routing, fanout, diff, worktree, retry and statusline layers. Credit where due.
+
 ![Demo: plan in Claude Code → delegate to Cursor → review the diff](docs/demo.gif)
+
+## Quick start
+
+Requirements: Node ≥ 18.18, the Cursor CLI on your `PATH` (`curl https://cursor.com/install -fsS | bash`), and `cursor-agent login` done once.
+
+```
+/plugin marketplace add taherahmadi/cursor-plugin-cc
+/plugin install cursor@cursor-plugin-cc
+/reload-plugins
+/cursor:setup
+```
+
+Then, inside any git repo:
+
+```
+/cursor:delegate add a dark-mode toggle to the settings page          # implement (Composer by default)
+/cursor:delegate --type plan "how should we split the billing module?" # read-only design discussion
+/cursor:delegate --worktree --retry 2 "migrate the ORM layer to v3"   # isolated + self-healing
+/cursor:diff                                                          # what did that job change?
+/cursor:review --base main                                            # second-model review of the branch
+/cursor:fanout write tests for utils/date.ts ;; review: audit src/auth ;; investigate: why is /search slow
+/cursor:status                                                        # every job, this session
+```
+
+Optional, once per repo — pin models per task type:
+
+```json
+// .cursor-plugin-cc.json
+{
+  "models": {
+    "implement": "composer",
+    "review": "gpt",
+    "security": "opus",
+    "plan": "opus"
+  }
+}
+```
+
+## How it compares
+
+| Capability                                                      | this fork | [freema](https://github.com/freema/cursor-plugin-cc) | Codex-plugin ports\* | MCP bridges\*\* |
+| --------------------------------------------------------------- | :-------: | :--------------------------------------------------: | :------------------: | :-------------: |
+| Delegate + background jobs + resume                             |     ✓     |                          ✓                           |          ✓           |        ✓        |
+| Plan-mode file → task file → delegate (`/cursor:from-plan`)     |     ✓     |                          ✓                           |          –           |        –        |
+| Read-only review + adversarial review, structured findings      |     ✓     |                          ✓                           |       partial        |        –        |
+| Stop-time review gate                                           |     ✓     |                          ✓                           |       partial        |        –        |
+| Browser verification via `chrome-devtools` MCP                  |     ✓     |                          ✓                           |          –           |        –        |
+| **Per-task-type model routing** (`.cursor-plugin-cc.json`)      |   **✓**   |                          –                           |          –           |        –        |
+| **Read-only `plan` / `investigate` delegation**                 |   **✓**   |                          –                           |          –           |     partial     |
+| **Parallel fanout with a concurrency bound + synthesis**        |   **✓**   |                          –                           |          –           |        –        |
+| **`--retry N` resuming the same chat**                          |   **✓**   |                          –                           |          –           |        –        |
+| **Worktree isolation with the path recorded**                   |   **✓**   |                          –                           |       partial        |        –        |
+| **`/cursor:diff` per job (base commit → tree, worktree-aware)** |   **✓**   |                          –                           |       partial        |        –        |
+| **Status-bar widget**                                           |   **✓**   |                          –                           |       partial        |        –        |
+| Windows launcher support                                        |     ✓     |                          ✓                           |          –           |        –        |
+| Zero runtime deps, no build step                                |     ✓     |                          ✓                           |        varies        |        –        |
+
+\* The various `cursor:review|rescue|status` ports of `openai/codex-plugin-cc` (bash or ESM). \*\* MCP servers that wrap `cursor-agent` as a tool; no slash commands, no job store.
 
 ## Plan. Delegate. Ship.
 
@@ -50,7 +120,7 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 
 ```
 /plugin marketplace add taherahmadi/cursor-plugin-cc
-/plugin install cursor@taher
+/plugin install cursor@cursor-plugin-cc
 /reload-plugins
 /cursor:setup
 ```
@@ -59,7 +129,7 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 
 ```
 /plugin marketplace add /Users/you/path/to/cursor-plugin-cc
-/plugin install cursor@taher
+/plugin install cursor@cursor-plugin-cc
 /reload-plugins
 /cursor:setup
 ```
@@ -137,13 +207,13 @@ Plus a `cursor-runner` subagent you can invoke from inside Claude to delegate we
 
 ## Why this plugin
 
-Short answer: **Composer is genuinely good at most day-to-day coding work** — and I don't want a pile of terminal windows to drive it. I want Claude Code to be the orchestrator for everything. The flow that keeps working for me is simple: **Claude makes the plan, Composer executes it, Claude reviews the diff.** Two tools, each doing what it is best at.
+Short answer: **Composer is genuinely good at most day-to-day coding work**, and nobody wants a pile of terminal windows to drive it. Claude Code should be the orchestrator for everything. The flow that keeps working is simple: **Claude makes the plan, Composer executes it, Claude reviews the diff.** Two tools, each doing what it is best at.
 
-"Why not do the whole thing inside Cursor, then?" Claude Code has a certain magic, particularly around planning. It is not purely about the underlying model — it is the whole rig (long-context sessions, subagents, the TUI, the way tools compose) that, in my experience, only really clicks inside Claude Code.
+"Why not do the whole thing inside Cursor, then?" Claude Code has a certain magic, particularly around planning. It is not purely about the underlying model; it is the whole rig (long-context sessions, subagents, the TUI, the way tools compose) that only really clicks inside Claude Code.
 
-Cursor CLI has its own plan mode and it is fine, but execution is where Cursor really shines: file edits, applying diffs, crunching through a well-scoped task list in force mode. Cursor 2 and the Composer models are heavily tuned for exactly that CLI use-case. (The same is true of Codex and GPT on OpenAI's side, which is why [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) exists — and which is what I borrowed from heavily when building this plugin. Credit where due.)
+Cursor CLI has its own plan mode and it is fine, but execution is where Cursor really shines: file edits, applying diffs, crunching through a well-scoped task list in force mode. The Composer models are heavily tuned for exactly that CLI use-case. (The same is true of Codex and GPT on OpenAI's side, which is why [`openai/codex-plugin-cc`](https://github.com/openai/codex-plugin-cc) exists, and which the upstream of this fork borrowed from heavily.)
 
-So: Claude plans, Cursor writes, Claude reviews, repeat. Glued together by seven slash commands and one subagent.
+**Why this fork over the upstream?** The upstream nails the single-task loop. Real work rarely arrives one task at a time, and not every delegation is an edit. This fork adds what was missing: a per-repo routing table so the right model handles each kind of work, genuinely read-only delegation for design and diagnosis, parallel fanout with worktree isolation so writers never collide, a retry that resumes rather than restarts, and a `diff` that always knows what a job touched, even inside a worktree. Same zero-dependency, no-build discipline; same `cursor:` commands you already know.
 
 ## A second opinion: `/cursor:review`
 
@@ -470,9 +540,9 @@ The plugin codebase is English, but it does not impose a language policy on **yo
 
 **Resume vs fresh.** Use `--resume` (default) when the new task is the same thread of work. Use `--fresh` when the topic changed, or when the previous run went off the rails and resuming would just carry the confusion forward.
 
-## How I actually use this (the recipe I run every day)
+## A daily recipe
 
-The two-phase loop above is the concept; here is the concrete workflow that falls out of it in practice, and the one I keep reaching for:
+The two-phase loop above is the concept; here is the concrete workflow that falls out of it in practice:
 
 1. **Plan in Claude Code and write a task file.** Describe what you want; ask Claude to draft a _task spec_ — a markdown file with **goal**, **acceptance criteria**, **files to touch**, and **how to verify** (the same five sections the `cursor-runner` subagent enforces). Save it under `tasks/<slug>.md` in the repo.
 2. **Hand the file to Cursor.** Run `/cursor:delegate @tasks/<slug>.md implement this`. The `@path` shorthand inlines the file contents into the prompt, so Cursor gets the full spec without Claude having to re-type it. Composer executes — it is genuinely fast, and a precisely defined task is usually a one-shot job.
@@ -590,7 +660,7 @@ You skipped `/reload-plugins`. Claude Code only picks up newly-installed plugin 
 
 ### `Shell command failed for pattern ... no matches found: review?`
 
-Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove taher && /plugin marketplace add taherahmadi/cursor-plugin-cc && /plugin install cursor@taher && /reload-plugins`.
+Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove cursor-plugin-cc && /plugin marketplace add taherahmadi/cursor-plugin-cc && /plugin install cursor@cursor-plugin-cc && /reload-plugins`.
 
 ### `Error: Cannot find module '.../dist/<cmd>.js'` or `'.../scripts/<cmd>.mjs'`
 
@@ -641,7 +711,7 @@ Things that are **not** in 0.1.0 but on the list:
 - **Additional browser MCPs** — right now `/cursor:browser` hard-codes `chrome-devtools` as the MCP name. Planned: a `--mcp <name>` flag plus autodiscovery so any DevTools-style MCP works. First follow-up target: Mozilla's [firefox-devtools-mcp](https://github.com/mozilla/firefox-devtools-mcp).
 - **Per-repo MCP preference** — `.cursor-plugin-cc.json` now covers models, timeout and fanout width; the browser MCP name is still hard-coded.
 - **Worktree merge-back** — `/cursor:diff` shows a worktree job's patch and how to apply it; an automated cherry-pick / cleanup command is not there yet.
-- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@taher` without a `cd plugins/cursor && npm install` step.
+- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@cursor-plugin-cc` without a `cd plugins/cursor && npm install` step.
 
 Contributions and ideas welcome.
 
