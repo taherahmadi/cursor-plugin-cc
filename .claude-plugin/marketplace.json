@@ -1,8 +1,11 @@
 {
-  "name": "tomas-cursor",
+  "name": "taher",
   "owner": {
-    "name": "Tomas Grasl",
-    "url": "https://www.tomasgrasl.cz/"
+    "name": "Taher Ahmadi",
+    "url": "https://github.com/taherahmadi"
+  },
+  "metadata": {
+    "description": "Cursor CLI plugin for Claude Code: delegation, fanout, review, worktree isolation, stop-time review gate. Fork of freema/cursor-plugin-cc."
   },
   "plugins": [
     {

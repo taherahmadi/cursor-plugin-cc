@@ -41,7 +41,7 @@ Plus a **Constraints** block that forbids: touching files outside the list, rena
 
 - Do not touch `package-lock.json` unless you are changing dependencies on purpose.
 - Do not modify `~/.cursor-plugin-cc/jobs/**` — that is user state, never ours.
-- Do not rename the command namespace (`cursor:`) or the marketplace name (`tomas-cursor`) without explicit user approval — both are referenced in user environments.
+- Do not rename the command namespace (`cursor:`) or the marketplace name (`taher`) without explicit user approval — both are referenced in user environments.
 - When adding a new slash command, follow the recipe in `CONTRIBUTING.md`.
 
 ## Where things live
