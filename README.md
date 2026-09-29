@@ -3,7 +3,7 @@
 > **Claude plans. Cursor writes. Claude reviews.**
 > A Claude Code plugin that delegates coding _execution_ to Cursor's Composer — without ever leaving the Claude Code TUI.
 
-[![CI](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml/badge.svg)](https://github.com/freema/cursor-plugin-cc/actions/workflows/ci.yml)
+[![CI](https://github.com/taherahmadi/cursor-plugin-cc/actions/workflows/ci.yml/badge.svg)](https://github.com/taherahmadi/cursor-plugin-cc/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](./LICENSE)
 [![Node.js](https://img.shields.io/badge/node-%E2%89%A5%2018.18-43853d.svg)](https://nodejs.org)
 [![Claude Code plugin](https://img.shields.io/badge/Claude%20Code-plugin-7c3aed.svg)](https://claude.com/claude-code)
@@ -49,8 +49,8 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 **Preferred — from GitHub:**
 
 ```
-/plugin marketplace add freema/cursor-plugin-cc
-/plugin install cursor@tomas-cursor
+/plugin marketplace add taherahmadi/cursor-plugin-cc
+/plugin install cursor@taher
 /reload-plugins
 /cursor:setup
 ```
@@ -59,7 +59,7 @@ That's the whole loop. Claude does the **thinking** (plan, review). Cursor does 
 
 ```
 /plugin marketplace add /Users/you/path/to/cursor-plugin-cc
-/plugin install cursor@tomas-cursor
+/plugin install cursor@taher
 /reload-plugins
 /cursor:setup
 ```
@@ -590,7 +590,7 @@ You skipped `/reload-plugins`. Claude Code only picks up newly-installed plugin 
 
 ### `Shell command failed for pattern ... no matches found: review?`
 
-Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove tomas-cursor && /plugin marketplace add freema/cursor-plugin-cc && /plugin install cursor@tomas-cursor && /reload-plugins`.
+Zsh globbing on `?` or `*` in your prompt. This should not happen in `v0.2.0+` because every command wrapper quotes `"$ARGUMENTS"`. If you see it, your plugin is outdated — reinstall: `/plugin marketplace remove taher && /plugin marketplace add taherahmadi/cursor-plugin-cc && /plugin install cursor@taher && /reload-plugins`.
 
 ### `Error: Cannot find module '.../dist/<cmd>.js'` or `'.../scripts/<cmd>.mjs'`
 
@@ -641,7 +641,7 @@ Things that are **not** in 0.1.0 but on the list:
 - **Additional browser MCPs** — right now `/cursor:browser` hard-codes `chrome-devtools` as the MCP name. Planned: a `--mcp <name>` flag plus autodiscovery so any DevTools-style MCP works. First follow-up target: Mozilla's [firefox-devtools-mcp](https://github.com/mozilla/firefox-devtools-mcp).
 - **Per-repo MCP preference** — `.cursor-plugin-cc.json` now covers models, timeout and fanout width; the browser MCP name is still hard-coded.
 - **Worktree merge-back** — `/cursor:diff` shows a worktree job's patch and how to apply it; an automated cherry-pick / cleanup command is not there yet.
-- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@tomas-cursor` without a `cd plugins/cursor && npm install` step.
+- **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@taher` without a `cd plugins/cursor && npm install` step.
 
 Contributions and ideas welcome.
 

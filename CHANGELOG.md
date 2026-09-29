@@ -6,6 +6,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## Unreleased
 
+### Changed
+
+- **Marketplace renamed to `taher`** (was `tomas-cursor`) now that this is a maintained fork. Install with `/plugin marketplace add taherahmadi/cursor-plugin-cc` then `/plugin install cursor@taher`. The plugin name and the `cursor:` command namespace are unchanged. If you added the old marketplace name, `/plugin marketplace remove tomas-cursor` first.
+
 ### Added
 
 - **Per-task-type model routing** via a repo-root `.cursor-plugin-cc.json` (`defaultModel`, `models.{implement,review,plan,investigate,security,browser}`, `timeout`, `maxFanout`). New `--type` on `/cursor:delegate` (default `implement`) and `/cursor:review` (default `review`; `--type security` for a security pass); `/cursor:browser` routes as `browser`, the stop review gate as `review`. Resolution: `--model` → `models[type]` → `defaultModel` → `CURSOR_PLUGIN_CC_DEFAULT_MODEL` → `auto`. `plan` and `investigate` run read-only through cursor-agent's `--mode plan` / `--mode ask`, which finally gives design discussions a mode that cannot touch the tree. New `lib/routing.mjs`; job records carry `taskType`, `routeSource`, `mode`.
