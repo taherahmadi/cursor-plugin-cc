@@ -27,7 +27,10 @@ describe('routing', () => {
   });
 
   const writeConfig = (obj) =>
-    writeFileSync(join(tmp.dir, REPO_CONFIG_FILE), typeof obj === 'string' ? obj : JSON.stringify(obj));
+    writeFileSync(
+      join(tmp.dir, REPO_CONFIG_FILE),
+      typeof obj === 'string' ? obj : JSON.stringify(obj),
+    );
 
   it('falls back to the builtin default without a repo file', () => {
     const route = resolveRoute({ repoRoot: tmp.dir, type: 'implement' });

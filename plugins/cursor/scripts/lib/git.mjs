@@ -64,9 +64,17 @@ export async function diffSince(cwd, opts = {}) {
   const base = opts.base ?? (await diffBase(cwd));
   const verify = await git(cwd, ['rev-parse', '--verify', '--quiet', `${base}^{commit}`]);
   if (verify.exitCode !== 0) {
-    return { text: '', files: [], isEmpty: true, error: `Base commit ${base} is not in this repository.` };
+    return {
+      text: '',
+      files: [],
+      isEmpty: true,
+      error: `Base commit ${base} is not in this repository.`,
+    };
   }
-  const tracked = (await git(cwd, ['diff', '--name-only', base])).stdout.trim().split('\n').filter(Boolean);
+  const tracked = (await git(cwd, ['diff', '--name-only', base])).stdout
+    .trim()
+    .split('\n')
+    .filter(Boolean);
   const untracked = (await git(cwd, ['ls-files', '--others', '--exclude-standard'])).stdout
     .trim()
     .split('\n')

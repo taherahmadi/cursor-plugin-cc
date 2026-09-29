@@ -1,6 +1,6 @@
 ---
 description: Read-only code review of your git diff by a Cursor model. Reports findings; never edits files.
-argument-hint: '[--wait|--background] [--base <ref>] [--scope auto|working-tree|branch] [--model <id>] [--adversarial] [focus...]'
+argument-hint: '[--wait|--background] [--base <ref>] [--scope auto|working-tree|branch] [--model <id>] [--type review|security] [--adversarial] [focus...]'
 disable-model-invocation: true
 allowed-tools: Read, Glob, Grep, Bash(node:*), Bash(git:*), AskUserQuestion
 ---

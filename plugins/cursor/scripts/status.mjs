@@ -2,7 +2,14 @@
 import { parseCommandArgv } from './lib/args.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { jobNotFoundMessage } from './lib/hints.mjs';
-import { SESSION_ID_ENV, filterJobsForSession, listJobs, readJob } from './lib/jobs.mjs';
+import {
+  SESSION_ID_ENV,
+  filterJobsForSession,
+  isCrashed,
+  listGroupJobs,
+  listJobs,
+  resolveJobRef,
+} from './lib/jobs.mjs';
 import { mdCell } from './lib/md.mjs';
 
 function age(iso) {
@@ -24,26 +31,44 @@ function truncate(s, n) {
 
 function renderTable(rows) {
   if (rows.length === 0) return 'No Cursor jobs tracked for this repository yet.\n';
-  const header = '| ID | Status | Model | Age | Prompt |';
-  const sep = '| --- | --- | --- | --- | --- |';
+  const header = '| ID | Status | Type | Model | Age | Prompt |';
+  const sep = '| --- | --- | --- | --- | --- | --- |';
   const body = rows
     .map(
       (r) =>
-        `| \`${r.id}\` | ${mdCell(r.status)} | ${mdCell(r.model)} | ${age(r.startedAt)} | ${truncate(
-          r.prompt,
-          60,
-        )} |`,
+        `| \`${r.id}\` | ${mdCell(statusLabel(r))} | ${mdCell(r.taskType ?? '')} | ${mdCell(r.model)} | ${age(
+          r.startedAt,
+        )} | ${truncate(r.prompt, 60)} |`,
     )
     .join('\n');
   return `${header}\n${sep}\n${body}\n`;
+}
+
+/**
+ * `running` with a dead worker is shown as `crashed`; the record itself is
+ * left alone (cancel/result still treat it as running).
+ * @param {import('./lib/jobs.mjs').JobRecord} r
+ */
+function statusLabel(r) {
+  return isCrashed(r) ? 'crashed' : r.status;
 }
 
 function renderDetail(r) {
   const lines = [];
   lines.push(`### Job \`${r.id}\``);
   lines.push('');
-  lines.push(`- **Status:** ${r.status}`);
-  lines.push(`- **Model:** ${r.model}`);
+  lines.push(`- **Status:** ${statusLabel(r)}`);
+  if (r.taskType) lines.push(`- **Type:** ${r.taskType}${r.mode ? ` (mode ${r.mode})` : ''}`);
+  lines.push(
+    `- **Model:** ${r.model}${r.routeSource && r.routeSource !== 'explicit' ? ` (${r.routeSource})` : ''}`,
+  );
+  if (typeof r.attempts === 'number' && (r.attempts > 1 || r.retryMax))
+    lines.push(`- **Attempts:** ${r.attempts}${r.retryMax ? ` of ${r.retryMax + 1}` : ''}`);
+  if (r.worktreePath || r.worktreeName)
+    lines.push(`- **Worktree:** \`${r.worktreePath ?? r.worktreeName}\``);
+  if (r.baseCommit)
+    lines.push(`- **Base commit:** \`${r.baseCommit.slice(0, 10)}\` — \`/cursor:diff ${r.id}\``);
+  if (r.groupId) lines.push(`- **Fanout group:** \`${r.groupId}\``);
   lines.push(`- **Started:** ${r.startedAt}`);
   if (r.finishedAt) lines.push(`- **Finished:** ${r.finishedAt}`);
   if (typeof r.exitCode === 'number') lines.push(`- **Exit code:** ${r.exitCode}`);
@@ -82,12 +107,29 @@ export async function main(rawArgv) {
   const root = await repoRoot(process.cwd());
   const id = positional[0];
   if (id) {
-    const job = readJob(root, id);
+    const resolved = resolveJobRef(root, id);
+    if (resolved.ambiguous) {
+      process.stderr.write(
+        `Job id \`${id}\` is ambiguous: ${resolved.ambiguous.map((j) => `\`${j.id}\``).join(', ')}. Use a longer prefix.\n`,
+      );
+      return 2;
+    }
+    const job = resolved.job;
     if (!job) {
       process.stderr.write(jobNotFoundMessage(id));
       return 1;
     }
     process.stdout.write(asJson ? JSON.stringify(job, null, 2) + '\n' : renderDetail(job));
+    return 0;
+  }
+  const group = typeof flags['group'] === 'string' ? flags['group'] : undefined;
+  if (group) {
+    const rows = listGroupJobs(root, group);
+    if (rows.length === 0) {
+      process.stderr.write(`No jobs tagged with fanout group \`${group}\` for this repository.\n`);
+      return 1;
+    }
+    process.stdout.write(asJson ? JSON.stringify(rows, null, 2) + '\n' : renderTable(rows));
     return 0;
   }
   // Default view is scoped to the current Claude session (plus unattributed

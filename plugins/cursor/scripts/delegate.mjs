@@ -68,8 +68,10 @@ function parseFlags(argv) {
   const type = normaliseTaskType(flags['type']) ?? DEFAULT_TASK_TYPE;
   const retry = parseRetry(flags['retry']);
   const worktreeRaw = flags['worktree'];
-  const worktree = worktreeRaw === true || (typeof worktreeRaw === 'string' && worktreeRaw.length > 0);
-  const worktreeName = typeof worktreeRaw === 'string' && worktreeRaw.length > 0 ? worktreeRaw : undefined;
+  const worktree =
+    worktreeRaw === true || (typeof worktreeRaw === 'string' && worktreeRaw.length > 0);
+  const worktreeName =
+    typeof worktreeRaw === 'string' && worktreeRaw.length > 0 ? worktreeRaw : undefined;
   const worktreeBase =
     typeof flags['worktree-base'] === 'string' ? flags['worktree-base'] : undefined;
   const group = typeof flags['group'] === 'string' ? flags['group'] : undefined;
@@ -218,7 +220,11 @@ async function executeWithRetries({ jobId, root, prompt, flags, plan, onEvent, l
     chatId = extractChatId(result.events) ?? chatId;
 
     if (worktreeName && attempts === 1) {
-      const path = resolveWorktreePath({ repoRoot: root, name: worktreeName, events: result.events });
+      const path = resolveWorktreePath({
+        repoRoot: root,
+        name: worktreeName,
+        events: result.events,
+      });
       updateJob(root, jobId, {
         worktreeName,
         ...(path ? { worktreePath: path, workspacePath: path } : {}),
@@ -350,7 +356,9 @@ async function foreground(flags, prompt, jobId, root) {
   if (result.killed)
     process.stdout.write('**⚠ Run was killed before finishing** (timeout/watchdog).\n');
   if (job?.worktreePath) {
-    process.stdout.write(`**Worktree:** \`${job.worktreePath}\` — inspect with \`/cursor:diff ${jobId}\`.\n`);
+    process.stdout.write(
+      `**Worktree:** \`${job.worktreePath}\` — inspect with \`/cursor:diff ${jobId}\`.\n`,
+    );
   } else if (plan.worktreeName) {
     process.stdout.write(
       `**Worktree:** \`${plan.worktreeName}\` (path not resolved — look under \`~/.cursor/worktrees/\`).\n`,
@@ -402,6 +410,56 @@ async function runWorker(jobId, flags, prompt, root) {
 }
 
 /**
+ * Default run flags for callers that build a run programmatically (fanout).
+ *
+ * @param {Partial<ReturnType<typeof parseFlags>>} [overrides]
+ * @returns {ReturnType<typeof parseFlags>}
+ */
+export function defaultRunFlags(overrides = {}) {
+  return {
+    positional: [],
+    model: undefined,
+    background: false,
+    wait: true,
+    fresh: false,
+    resume: undefined,
+    force: true,
+    cloud: false,
+    timeoutRaw: undefined,
+    noGitCheck: false,
+    worker: undefined,
+    type: DEFAULT_TASK_TYPE,
+    retry: 0,
+    worktree: false,
+    worktreeName: undefined,
+    worktreeBase: undefined,
+    group: undefined,
+    ...overrides,
+  };
+}
+
+/**
+ * Create the job record and run one delegated task to completion in this
+ * process. This is the unit `/cursor:fanout` schedules in parallel.
+ *
+ * @param {Object} input
+ * @param {string} input.root
+ * @param {string} input.jobId
+ * @param {string} input.prompt
+ * @param {ReturnType<typeof parseFlags>} input.flags
+ * @param {boolean=} input.background
+ * @param {(ev: Record<string, unknown>) => void=} input.onEvent
+ * @param {(line: string) => void=} input.log
+ */
+export async function runTaskJob({ root, jobId, prompt, flags, background = false, onEvent, log }) {
+  const plan = planRun(flags, root, jobId);
+  await createRecord(flags, prompt, jobId, root, plan, background);
+  updateJob(root, jobId, { pid: process.pid });
+  const outcome = await executeWithRetries({ jobId, root, prompt, flags, plan, onEvent, log });
+  return { ...outcome, plan };
+}
+
+/**
  * Flags to hand a detached worker so it re-derives the same run.
  * @param {ReturnType<typeof parseFlags>} flags
  * @returns {string[]}
@@ -423,7 +481,8 @@ export function forwardedWorkerArgs(flags) {
   if (!flags.force) args.push('--no-force');
   if (flags.timeoutRaw !== undefined) args.push('--timeout', String(flags.timeoutRaw));
   if (flags.retry > 0) args.push('--retry', String(flags.retry));
-  if (flags.worktree) args.push(flags.worktreeName ? `--worktree=${flags.worktreeName}` : '--worktree');
+  if (flags.worktree)
+    args.push(flags.worktreeName ? `--worktree=${flags.worktreeName}` : '--worktree');
   if (flags.worktreeBase) args.push('--worktree-base', flags.worktreeBase);
   if (flags.group) args.push('--group', flags.group);
   return args;

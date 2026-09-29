@@ -102,7 +102,13 @@ describe('delegate: routing, retry, worktree', () => {
   });
 
   it('plan type runs read-only via --mode plan', async () => {
-    const code = await delegateMain(['--no-git-check', '--type', 'plan', '--', 'how should we do X']);
+    const code = await delegateMain([
+      '--no-git-check',
+      '--type',
+      'plan',
+      '--',
+      'how should we do X',
+    ]);
     expect(code).toBe(0);
     const [call] = readCalls(argsOut);
     const i = call.argv.indexOf('--mode');

@@ -117,9 +117,11 @@ What lives where after a run:
 
 ## What you get
 
-Eleven slash commands under the `cursor:` namespace:
+Thirteen slash commands under the `cursor:` namespace:
 
-- **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background.
+- **`/cursor:delegate`** — hand a coding task to Cursor, foreground or background. `--type` routes it to the model your repo config picks for that kind of work, `--retry N` resumes a failed run, `--worktree` isolates it.
+- **`/cursor:fanout`** — run several tasks in parallel (bounded), each as its own job, and get one synthesis table when they finish.
+- **`/cursor:diff`** — show exactly what a job changed: the diff from the commit it started at, in the repo or in the job's worktree.
 - **`/cursor:from-plan`** — turn a Claude Code plan (from plan mode) into a `tasks/<file>.md` and hand it off to Cursor.
 - **`/cursor:review`** — read-only code review of your git diff by a Cursor model. Reports findings; never edits files.
 - **`/cursor:adversarial-review`** — steerable review that challenges the design and approach (assumptions, tradeoffs, failure modes), not just implementation defects. Read-only.
@@ -129,7 +131,7 @@ Eleven slash commands under the `cursor:` namespace:
 - **`/cursor:cancel`** — terminate a running job (SIGTERM, then SIGKILL after 5 s).
 - **`/cursor:resume`** — continue the previous Cursor chat with a follow-up.
 - **`/cursor:sessions`** — list Cursor's own chat sessions for this repo.
-- **`/cursor:setup`** — health-check the CLI, list models + configured MCPs, or guide installation.
+- **`/cursor:setup`** — health-check the CLI, list models + configured MCPs, guide installation, or install the [statusline widget](#statusline-widget).
 
 Plus a `cursor-runner` subagent you can invoke from inside Claude to delegate well-scoped tasks automatically, and a `composer-prompting` skill it uses to shape well-specified tasks into tight Cursor prompts.
 
@@ -166,6 +168,9 @@ Hand a coding task to `cursor-agent -p …`.
 | `--cloud`              | off                                           | Pass `-c` to cursor-agent.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                              |
 | `--timeout <sec>`      | `1800`                                        | Kill the job if it exceeds this.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `--no-git-check`       | off                                           | Allow running outside a git repo.                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| `--type <t>`           | `implement`                                   | Task type: `implement`, `review`, `plan`, `investigate`, `security`. Picks the model from your repo's [`.cursor-plugin-cc.json`](#per-repo-config-cursor-plugin-ccjson) when `--model` is absent. `plan` and `investigate` run **read-only** (`--mode plan` / `--mode ask`), so a design discussion can never touch the tree.                                                                                                                                                                                                           |
+| `--retry <n>`          | `0`                                           | If the run fails (error result, non-zero exit, no result event), resume the **same Cursor chat** with a "finish the task" nudge, up to `n` more times. Timeouts and cancels are never retried. Attempts land in one NDJSON log and on the job record.                                                                                                                                                                                                                                                                                   |
+| `--worktree[=<name>]`  | off                                           | Isolate the run in a git worktree via cursor-agent's own `--worktree` (created under `~/.cursor/worktrees/<repo>/<name>`, default name `cursor-<job-id>`). The job records the worktree path, so `/cursor:diff` shows what changed there. `--worktree-base <ref>` picks the base.                                                                                                                                                                                                                                                       |
 
 Examples:
 
@@ -174,6 +179,8 @@ Examples:
 /cursor:delegate --model composer "write jest tests for utils/date.ts"
 /cursor:delegate --background --model auto "migrate user repository to Doctrine 3"
 /cursor:delegate --resume "continue with the failing edge case"
+/cursor:delegate --type plan "how should we split the billing module?"      # read-only
+/cursor:delegate --retry 2 --worktree "migrate the ORM layer to v3"          # isolated + self-healing
 ```
 
 ### `/cursor:from-plan [plan-name] [--delegate] [--model <id>] [--background] [--list]`
@@ -353,9 +360,37 @@ Shortcut for `/cursor:delegate --resume <task...>`. Without a task, sends an emp
 
 Shells out to `cursor-agent ls` and lists Cursor's own chat sessions for this repo. If that call times out or returns empty, the plugin falls back to its local job registry.
 
-### `/cursor:setup [--doctor] [--print-models] [--install] [--json] [--enable-review-gate|--disable-review-gate]`
+### `/cursor:diff [job-id] [--stat] [--name-only] [--json]`
 
-Runs a quick health-check. `--doctor` produces extended diagnostics (Node version, PATH, `CURSOR_API_KEY` presence masked, jobs dir writability, cursor-agent version). `--print-models` shells out to `cursor-agent --list-models`. `--install` prints the install command but **does not run it** — you must copy-paste it yourself. `--json` emits the full doctor report as JSON (`checks[].ok`, `allOk`) for scripting. `--enable-review-gate` / `--disable-review-gate` toggle the per-repo [stop review gate](#stop-review-gate-opt-in).
+Shows what a job actually changed: the diff between the commit the job started from (`baseCommit`, recorded on every delegate and review job) and the current state of the tree it worked in — the repo root, or the job's worktree for `--worktree` runs. Untracked files the agent created are rendered as additions. Defaults to the most recent job; ids accept a unique prefix.
+
+```
+/cursor:diff                     # latest job, full patch
+/cursor:diff V1St --stat         # diffstat for a job by id prefix
+/cursor:diff V1StGXR8_Z --name-only
+```
+
+For a worktree job the output ends with how to bring the change into your branch (`git apply` of the patch, or cherry-pick from the worktree branch).
+
+### `/cursor:fanout [flags] <task 1> ;; <task 2> ;; review: <task 3>`
+
+Runs several tasks **in parallel**, each as a normal job (so `/cursor:status`, `/cursor:result`, `/cursor:diff` and `/cursor:cancel` all work per task), and prints one synthesis table when the group finishes: status, attempts, duration, files touched and a one-line summary per task, plus wall-clock time and the speedup over running them serially.
+
+- Tasks are separated by `;;`. A task may start with `implement:`, `review:`, `plan:`, `investigate:` or `security:` to route it to that type's model; anything else gets `--type` (default `implement`).
+- `implement` tasks run in their own worktrees by default, so parallel writers never collide in one working tree. `--no-worktree` turns that off (fine for read-only types, or when tasks touch disjoint files).
+- `--parallel <n>` bounds concurrency (default 4, or `maxFanout` from the repo config, max 16). `--model`, `--retry`, `--timeout` apply to every task.
+- `--tasks-file <path>` reads tasks from a file, separated by blank lines or `---` lines.
+- `--background` detaches the whole group; watch with `/cursor:status --group <id>` and re-print the synthesis with `/cursor:fanout --collect <id>`.
+
+```
+/cursor:fanout write unit tests for utils/date.ts ;; review: audit src/auth ;; investigate: why is /search slow
+/cursor:fanout --parallel 2 --retry 1 --tasks-file tasks/sprint-12.md
+/cursor:fanout --background --model opus security: scan for injection ;; security: check secrets handling
+```
+
+### `/cursor:setup [--doctor] [--print-models] [--install] [--json] [--enable-review-gate|--disable-review-gate] [--statusline|--install-statusline]`
+
+Runs a quick health-check. `--doctor` produces extended diagnostics (Node version, PATH, `CURSOR_API_KEY` presence masked, jobs dir writability, cursor-agent version). `--print-models` shells out to `cursor-agent --list-models`. `--install` prints the install command but **does not run it** — you must copy-paste it yourself. `--json` emits the full doctor report as JSON (`checks[].ok`, `allOk`) for scripting. `--enable-review-gate` / `--disable-review-gate` toggle the per-repo [stop review gate](#stop-review-gate-opt-in). `--statusline` prints the [statusline widget](#statusline-widget) snippet; `--install-statusline` writes it into your Claude Code settings when no status line is configured yet.
 
 ## Stop review gate (opt-in)
 
@@ -477,7 +512,49 @@ The task file stays in `tasks/` as a durable record — the contract between pla
 | `CURSOR_PLUGIN_CC_HOME`          | Override the jobs-registry root. Default: an existing `~/.cursor-plugin-cc` if present, else Claude Code's plugin data dir (`CLAUDE_PLUGIN_DATA/state`), else `~/.cursor-plugin-cc`. |
 | `CURSOR_PLUGIN_CC_DEFAULT_MODEL` | Default `--model` when none is passed. Accepts the same aliases as `--model` (e.g. `composer`, `opus`). Falls back to `auto`.                                                        |
 
-A repo-local `.cursor-plugin-cc.json` is on the roadmap for overriding the default model per repo; until then, set `--model` per invocation or pin `CURSOR_PLUGIN_CC_DEFAULT_MODEL` in your shell.
+| `CURSOR_PLUGIN_CC_STATUSLINE_CWD` | Directory the [statusline widget](#statusline-widget) scopes to when it cannot read Claude Code's stdin JSON (chained status bars). |
+
+### Per-repo config: `.cursor-plugin-cc.json`
+
+Drop this at the repo root to pin which Cursor model handles which kind of work, without re-typing `--model`:
+
+```json
+{
+  "defaultModel": "composer",
+  "models": {
+    "implement": "composer",
+    "review": "gpt",
+    "security": "opus",
+    "plan": "opus",
+    "investigate": "auto"
+  },
+  "timeout": 1800,
+  "maxFanout": 4
+}
+```
+
+- Values accept the same aliases as `--model`. Keys are the task types (`implement`, `review`, `plan`, `investigate`, `security`, `browser`).
+- Resolution order for any run: `--model` on the command line → `models[<type>]` → `defaultModel` → `CURSOR_PLUGIN_CC_DEFAULT_MODEL` → `auto`.
+- `/cursor:delegate` routes as `implement` unless `--type` says otherwise; `/cursor:review` and `/cursor:adversarial-review` as `review` (`--type security` for a security pass); `/cursor:browser` as `browser`; the stop review gate as `review`.
+- `timeout` is the default `--timeout` in seconds; `maxFanout` the default `--parallel` for `/cursor:fanout`.
+- A malformed file is ignored with a warning — it never breaks delegation. Commit it; it is project configuration.
+
+## Statusline widget
+
+One short line in Claude Code's status bar while Cursor jobs run for the current repo, nothing when idle:
+
+```
+◐ 2 cursor · 3m 12s
+```
+
+The count covers running jobs for the repository Claude Code reports in its statusLine input (`workspace.current_dir`), crashed workers are excluded, the time is the longest-running job's, and the spinner frame advances with elapsed time on every refresh (no timers). Fanout groups show as `2 cursor (1 fanout)`.
+
+```
+/cursor:setup --install-statusline   # writes statusLine into settings.json if none is set
+/cursor:setup --statusline           # prints the snippet — chain it into an existing status bar
+```
+
+The installer never overwrites a status line you already have. To chain the widget into your own script, append `; node "<plugin>/scripts/statusline.mjs" </dev/null` to its command: with empty stdin the widget scopes to its working directory, or set `CURSOR_PLUGIN_CC_STATUSLINE_CWD`.
 
 ## Moving work back to Cursor
 
@@ -562,7 +639,8 @@ CI runs `npm test` and `npm run lint` on every PR across Node 18.18 / 20 / 22 on
 Things that are **not** in 0.1.0 but on the list:
 
 - **Additional browser MCPs** — right now `/cursor:browser` hard-codes `chrome-devtools` as the MCP name. Planned: a `--mcp <name>` flag plus autodiscovery so any DevTools-style MCP works. First follow-up target: Mozilla's [firefox-devtools-mcp](https://github.com/mozilla/firefox-devtools-mcp).
-- **Per-repo defaults** — a `.cursor-plugin-cc.json` at repo root to override default model, timeout and MCP preference without re-typing flags.
+- **Per-repo MCP preference** — `.cursor-plugin-cc.json` now covers models, timeout and fanout width; the browser MCP name is still hard-coded.
+- **Worktree merge-back** — `/cursor:diff` shows a worktree job's patch and how to apply it; an automated cherry-pick / cleanup command is not there yet.
 - **npm publish** — once the API stabilises, ship a tarball so users can `/plugin install cursor@tomas-cursor` without a `cd plugins/cursor && npm install` step.
 
 Contributions and ideas welcome.

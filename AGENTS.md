@@ -4,7 +4,7 @@ This file is the contract any agent (Claude Code, Cursor, Codex, …) must follo
 
 ## What this repo is
 
-A Claude Code plugin that delegates coding tasks from Claude to the Cursor CLI (`cursor-agent`). Eleven slash commands under the `cursor:` namespace, a `cursor-runner` subagent, and a `composer-prompting` skill. Source of truth lives under `plugins/cursor/`.
+A Claude Code plugin that delegates coding tasks from Claude to the Cursor CLI (`cursor-agent`). Thirteen slash commands under the `cursor:` namespace, a `cursor-runner` subagent, a `composer-prompting` skill, and a statusline widget. Source of truth lives under `plugins/cursor/`.
 
 ## Hard rules
 
@@ -52,6 +52,8 @@ Plus a **Constraints** block that forbids: touching files outside the list, rena
 - `plugins/cursor/schemas/review-output.schema.json` — the structured-review contract; validated hand-rolled in `lib/review-output.mjs` (zero-deps — do not add a schema-validator package).
 - `plugins/cursor/scripts/lib/*.mjs` — shared helpers (run, id, args, paths, jobs, kill, parse, cursor, git, invoked, plan, hints, md, prompts, config, review-output).
 - `plugins/cursor/commands/*.md` — slash command wrappers.
+- `plugins/cursor/scripts/statusline.mjs` — the Claude Code statusLine widget (not a slash command; wired by `/cursor:setup --install-statusline`).
+- `plugins/cursor/scripts/lib/routing.mjs`, `groups.mjs`, `worktree.mjs`, `statusline-install.mjs` — per-type model routing (`.cursor-plugin-cc.json`), fanout group records, worktree bookkeeping, statusline settings wiring.
 - `plugins/cursor/agents/cursor-runner.md` — the handoff subagent prompt.
 - `plugins/cursor/skills/composer-prompting/` — Cursor prompt-shaping guidance the `cursor-runner` subagent references via its `skills:` frontmatter. `SKILL.md` is the always-loaded spine; the detailed material lives in `references/*.md` (prompt anatomy, model selection, anti-patterns), loaded on demand.
 - `plugins/cursor/tests/*.test.mjs` — vitest specs + fixtures.

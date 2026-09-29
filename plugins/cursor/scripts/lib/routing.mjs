@@ -52,6 +52,7 @@ const TYPE_MODES = Object.freeze({
  * @property {string=} defaultModel
  * @property {Record<string, string>=} models
  * @property {number=} timeout
+ * @property {number=} maxFanout      Default `--parallel` for /cursor:fanout.
  */
 
 /**
@@ -100,6 +101,13 @@ export function readRepoConfig(repoRoot) {
   if (typeof parsed.timeout === 'number' && Number.isFinite(parsed.timeout) && parsed.timeout > 0) {
     config.timeout = parsed.timeout;
   }
+  if (
+    typeof parsed.maxFanout === 'number' &&
+    Number.isFinite(parsed.maxFanout) &&
+    parsed.maxFanout >= 1
+  ) {
+    config.maxFanout = Math.floor(parsed.maxFanout);
+  }
   return { config };
 }
 
@@ -147,7 +155,10 @@ export function resolveRoute(input) {
   const { config, warning } = readRepoConfig(input.repoRoot);
   const type = normaliseTaskType(input.type);
   const mode = type ? TYPE_MODES[type] : undefined;
-  const base = { ...(mode ? { mode } : {}), ...(config.timeout ? { timeout: config.timeout } : {}) };
+  const base = {
+    ...(mode ? { mode } : {}),
+    ...(config.timeout ? { timeout: config.timeout } : {}),
+  };
   const withWarning = (route) => (warning ? { ...route, warning } : route);
 
   if (typeof input.explicitModel === 'string' && input.explicitModel.trim()) {
