@@ -13,7 +13,8 @@
 
 import { readFileSync } from 'node:fs';
 import { getConfig } from './lib/config.mjs';
-import { authStatus, resolveBin, resolveModel, runHeadless } from './lib/cursor.mjs';
+import { authStatus, resolveBin, runHeadless } from './lib/cursor.mjs';
+import { resolveRoute } from './lib/routing.mjs';
 import { repoRoot } from './lib/git.mjs';
 import { id as newId } from './lib/id.mjs';
 import { SESSION_ID_ENV, listJobs, rawLogPath } from './lib/jobs.mjs';
@@ -78,7 +79,7 @@ async function runGateReview(input, root) {
   ensureDir(logsDir(root));
   const result = await runHeadless({
     prompt,
-    model: resolveModel(undefined),
+    model: resolveRoute({ type: 'review', repoRoot: root }).model,
     cloud: false,
     force: true,
     timeoutSec: GATE_TIMEOUT_SEC,
